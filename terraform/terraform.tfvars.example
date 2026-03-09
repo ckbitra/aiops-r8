@@ -1,0 +1,20 @@
+# =============================================================================
+# AIOps R8 - Example Terraform Variables
+# =============================================================================
+# Copy to terraform.tfvars and customize for your environment
+# =============================================================================
+
+aws_region   = "us-east-1"
+environment = "prod"
+project_name = "aiops-r8"
+
+# Optional: EC2 key pair for SSH/RDP access
+# key_name = "my-key-pair"
+
+# Instance types (t2.micro for free tier)
+rhel8_instance_type   = "t2.micro"
+windows_instance_type = "t2.micro"
+
+# Bedrock model for CVE analysis
+# Bedrock model for CVE analysis (us.amazon.nova-2-lite-v1:0 = Amazon Nova 2 Lite)
+bedrock_model = "us.amazon.nova-2-lite-v1:0"
