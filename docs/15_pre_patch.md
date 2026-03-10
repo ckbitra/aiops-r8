@@ -32,5 +32,5 @@ If you run the old pre-patch SSM documents manually, they will still write to th
 
 ## See Also
 
-- [docs/inspector.md](inspector.md) – Amazon Inspector integration details
-- [docs/ssm_documents.md](ssm_documents.md) – SSM documents (post-patch only)
+- [05_Inspector_Integration.md](05_Inspector_Integration.md) – Amazon Inspector integration details
+- [13_ssm_documents.md](13_ssm_documents.md) – SSM documents (post-patch only)

@@ -6,17 +6,18 @@
 
 ```
 1. DiscoverInstances      →  Discovers 100 RHEL8 instances by tags (or static IDs)
-2. FetchInspectorFindings →  Gets CVE findings for all 100 instances in the VPC
-3. AnalyzeCVEs            →  Bedrock returns has_critical_cves + critical_cve_ids
-4. CheckMaintenanceWindow →  Optional: skip if outside window
-5. PrepareBatches         →  Splits 100 instances into batches of 10 (configurable)
-6. ApplyPatches (Map)     →  For each batch:
+2. CheckSSMAgentHealth    →  Filters out instances not in SSM Managed state
+3. FetchInspectorFindings →  Gets CVE findings for all managed instances in the VPC
+4. AnalyzeCVEs            →  Bedrock returns has_critical_cves + critical_cve_ids
+5. CheckMaintenanceWindow →  Skip if outside window (enabled by default)
+6. PrepareBatches         →  Splits instances into batches (canary_batch_size for first batch, then batch_size)
+7. ApplyPatches (Map)     →  For each batch:
    - Patch batch (10 instances) via SSM Runner
    - Wait 180 seconds (for reboots)
    - CheckFailure Lambda: any recently patched instance stopped?
    - If yes → Fail → NotifyFailure (stop remaining batches)
    - If no → next batch
-7. Post-patch verification
+8. Post-patch verification
 ```
 
 **Important:** With batched patching, if node 2 (in batch 1) fails to reboot, the Failure Check detects it before batch 2 runs. Patching stops within the same run.

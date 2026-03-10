@@ -136,5 +136,17 @@ variable "maintenance_end_hour_utc" {
 variable "check_maintenance_window" {
   description = "Skip patching if outside maintenance window"
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "canary_batch_size" {
+  description = "First batch size for canary/phased rollout (0 = disabled)"
+  type        = number
+  default     = 0
+}
+
+variable "check_ssm_agent_health" {
+  description = "Filter out instances not in SSM Managed state before patching"
+  type        = bool
+  default     = true
 }

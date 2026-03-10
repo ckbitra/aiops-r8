@@ -22,13 +22,14 @@
 
 ### 3. AWS Lambda
 
-**Purpose**: Ten Lambda functions support the patch workflow.
+**Purpose**: Eleven Lambda functions support the patch workflow.
 
 - **`aiops-r8-instance-discovery`**: Discovers EC2 instances by tags (Role=patch-target); excludes PatchExcluded
+- **`aiops-r8-ssm-agent-health`**: Filters out instances not in SSM Managed state before patching; sends SNS alert when instances excluded
 - **`aiops-r8-batch-prepare`**: Splits instance IDs into batches for batched patching
 - **`aiops-r8-get-batch`**: Returns batch at index (for loop-based patching)
 - **`aiops-r8-failure-check`**: Checks if recently patched instances have stopped
-- **`aiops-r8-maintenance-window`**: Optional maintenance window check
+- **`aiops-r8-maintenance-window`**: Maintenance window check (enabled by default)
 - **`aiops-r8-inspector-findings`**: Fetches CVE findings from Amazon Inspector v2
   - **Actions**: Calls `inspector2:ListFindings` with filters (VPC ID, resource type, status)
   - **Permissions**: CloudWatch Logs, Inspector ListFindings
@@ -73,7 +74,7 @@
 
 **Purpose**: Orchestrates the patch workflow as a state machine.
 
-- **States**: FetchInspectorFindings → AnalyzeCVEs → CheckCriticalCVEs (Choice) → ApplyPatches (Parallel) → PostPatch (Parallel)
+- **States**: DiscoverInstances → CheckSSMAgentHealth → FetchInspectorFindings → AnalyzeCVEs → CheckMaintenanceWindow → CheckCriticalCVEs (Choice) → ApplyPatches (Parallel) → PostPatch (Parallel)
 - **Integrations**: Lambda (invoke) only—no native SSM sync; SSM operations go through the SSM Runner Lambda
 - **Choice**: Skips patching if Bedrock returns has_critical_cves=false
 
@@ -115,6 +116,7 @@
 - **SSM Runner Lambda Role**: Logs + SSM, DynamoDB, SNS, EC2
 - **EC2 Stopped Handler Lambda Role**: Logs + DynamoDB, EC2
 - **AMI Cleanup Lambda Role**: Logs + EC2
+- **SSM Agent Health Lambda Role**: Logs + SSM DescribeInstanceInformation + SNS Publish
 - **Step Functions Role**: Lambda invoke (Inspector findings, CVE analyzer, SSM runner)
 - **EventBridge Role**: Step Functions StartExecution
 

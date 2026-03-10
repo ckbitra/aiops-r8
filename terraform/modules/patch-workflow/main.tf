@@ -174,6 +174,7 @@ resource "aws_iam_role_policy" "step_functions" {
           aws_lambda_function.ssm_runner.arn,
           aws_lambda_function.inspector_findings.arn,
           aws_lambda_function.instance_discovery.arn,
+          aws_lambda_function.ssm_agent_health.arn,
           aws_lambda_function.batch_prepare.arn,
           aws_lambda_function.get_batch.arn,
           aws_lambda_function.failure_check.arn,
@@ -478,6 +479,19 @@ resource "aws_sfn_state_machine" "patch_workflow" {
           }
         }
         ResultPath = "$.discoveredInstances"
+        Next       = "CheckSSMAgentHealth"
+      }
+      CheckSSMAgentHealth = {
+        Type = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
+        Parameters = {
+          FunctionName = aws_lambda_function.ssm_agent_health.function_name
+          Payload = {
+            "rhel8_ids.$"   = "$.discoveredInstances.Payload.body.rhel8_ids"
+            "windows_ids.$" = "$.discoveredInstances.Payload.body.windows_ids"
+          }
+        }
+        ResultPath = "$.ssmHealthCheck"
         Next       = "FetchInspectorFindings"
       }
       FetchInspectorFindings = {
@@ -487,8 +501,8 @@ resource "aws_sfn_state_machine" "patch_workflow" {
           FunctionName = aws_lambda_function.inspector_findings.function_name
           Payload = {
             "vpc_id"        = var.vpc_id
-            "rhel8_ids.$"   = "$.discoveredInstances.Payload.body.rhel8_ids"
-            "windows_ids.$" = "$.discoveredInstances.Payload.body.windows_ids"
+            "rhel8_ids.$"   = "$.ssmHealthCheck.Payload.body.rhel8_ids"
+            "windows_ids.$" = "$.ssmHealthCheck.Payload.body.windows_ids"
           }
         }
         ResultPath = "$.inspectorFindings"
@@ -502,8 +516,8 @@ resource "aws_sfn_state_machine" "patch_workflow" {
           Payload = {
             "action"                 = "analyze"
             "inspector_findings.$"    = "$.inspectorFindings.Payload.body"
-            "rhel8_ids.$"            = "$.discoveredInstances.Payload.body.rhel8_ids"
-            "windows_ids.$"           = "$.discoveredInstances.Payload.body.windows_ids"
+            "rhel8_ids.$"            = "$.ssmHealthCheck.Payload.body.rhel8_ids"
+            "windows_ids.$"          = "$.ssmHealthCheck.Payload.body.windows_ids"
           }
         }
         ResultPath = "$.analyzeResult"
@@ -538,10 +552,11 @@ resource "aws_sfn_state_machine" "patch_workflow" {
         Parameters = {
           FunctionName = aws_lambda_function.batch_prepare.function_name
           Payload = {
-            "rhel8_ids.$"       = "$.discoveredInstances.Payload.body.rhel8_ids"
-            "windows_ids.$"     = "$.discoveredInstances.Payload.body.windows_ids"
+            "rhel8_ids.$"        = "$.ssmHealthCheck.Payload.body.rhel8_ids"
+            "windows_ids.$"      = "$.ssmHealthCheck.Payload.body.windows_ids"
             "critical_cve_ids.$" = "$.analyzeResult.Payload.body.critical_cve_ids"
-            "batch_size"        = var.batch_size
+            "batch_size"         = var.batch_size
+            "canary_batch_size"  = var.canary_batch_size
           }
         }
         ResultPath = "$.batches"
@@ -870,6 +885,63 @@ resource "aws_lambda_function" "instance_discovery" {
     variables = { VPC_ID = var.vpc_id }
   }
   tags = merge(var.tags, { Name = "${var.project_name}-instance-discovery" })
+}
+
+# -----------------------------------------------------------------------------
+# Lambda - SSM Agent Health (filter instances not in Managed state)
+# -----------------------------------------------------------------------------
+
+data "archive_file" "ssm_agent_health_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/ssm_agent_health.py"
+  output_path = "${path.module}/lambda/ssm_agent_health.zip"
+}
+
+resource "aws_iam_role" "ssm_agent_health_lambda" {
+  name = "${var.project_name}-ssm-agent-health-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" } }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "ssm_agent_health_lambda" {
+  name   = "${var.project_name}-ssm-agent-health-policy"
+  role   = aws_iam_role.ssm_agent_health_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Effect = "Allow", Action = ["logs:*"], Resource = "*" },
+      { Effect = "Allow", Action = ["ssm:DescribeInstanceInformation"], Resource = "*" },
+      { Effect = "Allow", Action = ["sns:Publish"], Resource = aws_sns_topic.patch_alerts.arn },
+    ]
+  })
+}
+
+resource "aws_lambda_function" "ssm_agent_health" {
+  filename         = data.archive_file.ssm_agent_health_zip.output_path
+  function_name    = "${var.project_name}-ssm-agent-health"
+  role             = aws_iam_role.ssm_agent_health_lambda.arn
+  handler          = "ssm_agent_health.lambda_handler"
+  source_code_hash = data.archive_file.ssm_agent_health_zip.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 30
+  environment {
+    variables = {
+      PATCH_ALERTS_TOPIC_ARN  = aws_sns_topic.patch_alerts.arn
+      CHECK_SSM_AGENT_HEALTH  = tostring(var.check_ssm_agent_health)
+    }
+  }
+  tags = merge(var.tags, { Name = "${var.project_name}-ssm-agent-health" })
+}
+
+resource "aws_lambda_permission" "ssm_agent_health_sf" {
+  statement_id  = "AllowExecutionFromStepFunctions"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.ssm_agent_health.function_name
+  principal     = "states.amazonaws.com"
+  source_arn    = aws_sfn_state_machine.patch_workflow.arn
 }
 
 # -----------------------------------------------------------------------------

@@ -18,24 +18,28 @@ This document describes the end-to-end workflow for automated CVE patching of RH
    │  Instance Discovery Lambda: by tags (Role=patch-target) or static Terraform IDs
    │  Excludes PatchExcluded=true
    ▼
-3. FETCH INSPECTOR FINDINGS (Lambda)
+3. CHECK SSM AGENT HEALTH (Lambda)
+   │  Filters out instances not in SSM Managed state; sends SNS alert if any excluded
+   ▼
+4. FETCH INSPECTOR FINDINGS (Lambda)
    │  Inspector Findings Lambda fetches CVE findings from Amazon Inspector v2
    ▼
-4. ANALYZE (Lambda + Bedrock)
+5. ANALYZE (Lambda + Bedrock)
    │  Lambda sends Inspector findings to Bedrock; model analyzes CVEs
    │  Returns has_critical_cves flag + recommendations
    ▼
-5. CHECK MAINTENANCE WINDOW (optional)
-   │  If outside window → Skip
+6. CHECK MAINTENANCE WINDOW
+   │  If outside window → Skip (enabled by default)
    ▼
-6. PREPARE BATCHES + APPLY (Map over batches)
+7. PREPARE BATCHES + APPLY (Map over batches)
    │  Per batch: Patch → Wait 180s → CheckFailure → continue or abort
    │  Batched patching stops within same run if instance fails to reboot
+   │  Canary: first batch uses canary_batch_size, then remaining batches
    ▼
-7. POST-PATCH (Parallel, via Lambda → SSM)
+8. POST-PATCH (Parallel, via Lambda → SSM)
    │  SSM Runner Lambda verifies patches on RHEL8 and Windows
    ▼
-8. COMPLETE
+9. COMPLETE
 ```
 
 ## Component Interaction
@@ -44,12 +48,13 @@ This document describes the end-to-end workflow for automated CVE patching of RH
 |------|------------|--------|
 | 1 | EventBridge | Triggers Step Functions on schedule |
 | 2 | Instance Discovery Lambda | Discovers instances by tags; excludes PatchExcluded |
-| 3 | Inspector Findings Lambda | Fetches CVE findings from Amazon Inspector v2 |
-| 4 | CVE Analyzer Lambda + Bedrock | CVE analysis (retry, fallback, safe parsing) |
-| 5 | Maintenance Window Lambda | Optional: skip if outside window |
-| 6 | Batch Prepare + SSM Runner | Batched patching; mid-run failure detection |
-| 7 | SSM Runner Lambda → SSM | Post-patch verification |
-| 8 | Step Functions | Workflow completes |
+| 3 | SSM Agent Health Lambda | Filters out instances not in SSM Managed state |
+| 4 | Inspector Findings Lambda | Fetches CVE findings from Amazon Inspector v2 |
+| 5 | CVE Analyzer Lambda + Bedrock | CVE analysis (retry, fallback, safe parsing) |
+| 6 | Maintenance Window Lambda | Skip if outside window (enabled by default) |
+| 7 | Batch Prepare + SSM Runner | Batched patching; canary/phased rollout; mid-run failure detection |
+| 8 | SSM Runner Lambda → SSM | Post-patch verification |
+| 9 | Step Functions | Workflow completes |
 
 **Circuit-breaker:** EventBridge rule on EC2 `stopped` invokes EC2 Stopped Handler Lambda. Records CVE failures in DynamoDB. SSM Runner checks before patching; skips and sends SNS alert if CVE is blocked.
 

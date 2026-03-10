@@ -87,6 +87,68 @@ When a patched node fails to reboot, recovery was manual. An engineer had to fin
 
 ---
 
+## 4. Maintenance Window (Enabled by Default) ✅ IMPLEMENTED
+
+### Solution (Implemented)
+
+| Component | Implementation |
+|-----------|----------------|
+| **Lambda** | `{project}-maintenance-window` – checks if current UTC hour is within configured window |
+| **Step Functions** | CheckMaintenanceWindow state runs before PrepareBatches; skips patching if outside window |
+
+### Configuration
+
+| Terraform Variable | Default | Purpose |
+|--------------------|---------|---------|
+| `check_maintenance_window` | `true` | Skip patching if outside maintenance window |
+| `maintenance_start_hour_utc` | 2 | Window start (UTC) |
+| `maintenance_end_hour_utc` | 6 | Window end (UTC) |
+
+---
+
+## 5. SSM Agent Health Pre-Check ✅ IMPLEMENTED
+
+### Problem
+
+Instances not in SSM Managed state would fail patching or cause timeouts. No pre-check existed.
+
+### Solution (Implemented)
+
+| Component | Implementation |
+|-----------|----------------|
+| **Lambda** | `{project}-ssm-agent-health` – calls `ssm:DescribeInstanceInformation`, filters to PingStatus=Online |
+| **Step Functions** | CheckSSMAgentHealth runs after DiscoverInstances; downstream steps use filtered instance lists |
+| **Alerting** | Sends SNS alert when instances are excluded (not SSM-managed) |
+
+### Configuration
+
+| Terraform Variable | Default | Purpose |
+|--------------------|---------|---------|
+| `check_ssm_agent_health` | `true` | Filter out instances not in SSM Managed state |
+
+---
+
+## 6. Canary / Phased Rollout ✅ IMPLEMENTED
+
+### Problem
+
+Patching all instances at once increases risk. A canary approach patches a small subset first.
+
+### Solution (Implemented)
+
+| Component | Implementation |
+|-----------|----------------|
+| **Batch Prepare** | When `canary_batch_size` > 0, first batch uses canary size; remaining batches use `batch_size` |
+| **Flow** | First batch patches canary instances; 180s wait + Failure Check; if success, remaining batches proceed |
+
+### Configuration
+
+| Terraform Variable | Default | Purpose |
+|--------------------|---------|---------|
+| `canary_batch_size` | 0 | First batch size (0 = disabled, use same batch_size for all) |
+
+---
+
 ## Summary
 
 | Improvement | Priority | Effort | Status |
@@ -94,3 +156,6 @@ When a patched node fails to reboot, recovery was manual. An engineer had to fin
 | Circuit-breaker (halt patching on CVE failure) | High | Medium | ✅ Implemented |
 | Automated recovery from AMI | Medium | High | ✅ Implemented (opt-in via `enable_auto_recovery`) |
 | AMI retention and cleanup | Low | Low | ✅ Implemented |
+| Maintenance window | Medium | Low | ✅ Implemented (enabled by default) |
+| SSM agent health pre-check | High | Medium | ✅ Implemented |
+| Canary/phased rollout | Medium | Low | ✅ Implemented |

@@ -67,14 +67,16 @@ Recommendations for enhancing the project across reliability, scalability, obser
 ## 6. Instance Exclusion and Maintenance Windows ✅ IMPLEMENTED
 
 - **Exclusion:** Tag `PatchExcluded=true` (configurable) – Instance Discovery filters these out
-- **Maintenance window:** `maintenance_start_hour_utc`, `maintenance_end_hour_utc`; `check_maintenance_window` to enable
+- **Maintenance window:** `maintenance_start_hour_utc`, `maintenance_end_hour_utc`; `check_maintenance_window` (default: true)
+- **SSM agent health:** `check_ssm_agent_health` (default: true) – filters out instances not in SSM Managed state
+- **Canary rollout:** `canary_batch_size` – first batch patches fewer instances, then remaining batches
 - **Dry-run:** `dry_run=true` – SSM Runner logs only, no patches applied
 
 ---
 
 ## 7. Testing ✅ IMPLEMENTED
 
-- **Unit tests:** `tests/test_cve_analyzer.py`, `tests/test_ssm_runner.py`, `tests/test_batch_prepare.py`
+- **Unit tests:** `tests/test_cve_analyzer.py`, `tests/test_ssm_runner.py`, `tests/test_batch_prepare.py`, `tests/test_ssm_agent_health.py`
 - **CI/CD:** `.github/workflows/test.yml` – runs pytest on push/PR
 
 ---

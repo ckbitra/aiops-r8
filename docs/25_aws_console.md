@@ -37,7 +37,7 @@ This document describes how to verify each component of the AIOps R8 patch workf
 
 **Path**: AWS Console → **Lambda** → **Functions**
 
-### Verify All Five Functions Exist
+### Verify All Lambda Functions Exist
 
 | Function Name                 | Purpose                                                       |
 | ----------------------------- | ------------------------------------------------------------- |
@@ -45,7 +45,8 @@ This document describes how to verify each component of the AIOps R8 patch workf
 | `aiops-r8-cve-analyzer`       | Sends findings to Bedrock, returns analysis + critical_cve_ids |
 | `aiops-r8-ssm-runner`         | Runs SSM commands; circuit-breaker pre-check; pre-patch AMIs  |
 | `aiops-r8-ec2-stopped-handler`| Circuit-breaker: records CVE failures; optional recovery       |
-| `aiops-r8-ami-cleanup`        | Daily cleanup of old pre-patch AMIs                          |
+| `aiops-r8-ami-cleanup`        | Daily cleanup of old pre-patch AMIs                           |
+| `aiops-r8-ssm-agent-health`   | Filters out instances not in SSM Managed state before patching |
 
 
 ### Inspector Findings Lambda
@@ -93,8 +94,11 @@ This document describes how to verify each component of the AIOps R8 patch workf
 1. Find `**aiops-r8-patch-workflow`**.
 2. Click the state machine name.
 3. **Definition** tab: Confirm the workflow includes:
-  - `FetchInspectorFindings` (start)
+  - `DiscoverInstances` (start)
+  - `CheckSSMAgentHealth`
+  - `FetchInspectorFindings`
   - `AnalyzeCVEs`
+  - `CheckMaintenanceWindow`
   - `CheckCriticalCVEs` (Choice)
   - `ApplyPatches` (Parallel)
   - `PostPatch` (Parallel)

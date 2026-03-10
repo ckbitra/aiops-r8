@@ -145,9 +145,11 @@ module "patch_workflow" {
 
   use_dynamic_discovery    = var.use_dynamic_discovery
   batch_size               = var.batch_size
+  canary_batch_size        = var.canary_batch_size
   dry_run                  = var.dry_run
   create_prepatch_ami      = var.create_prepatch_ami
   check_maintenance_window = var.check_maintenance_window
+  check_ssm_agent_health   = var.check_ssm_agent_health
   alert_email              = var.alert_email
 
   tags = local.common_tags

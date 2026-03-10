@@ -72,7 +72,7 @@ Validates configuration syntax only (does not check if resources exist in AWS).
 | Patch Workflow | SSM Patch Baseline | 1 | windows-cve-baseline |
 | Patch Workflow | Step Functions | 1 | patch workflow |
 | Patch Workflow | EventBridge Rules | 3 | patch schedule, ec2 stopped, ami cleanup |
-| Patch Workflow | Lambda Functions | 9 | cve_analyzer, ssm_runner, inspector_findings, etc. |
+| Patch Workflow | Lambda Functions | 11 | cve_analyzer, ssm_runner, inspector_findings, ssm_agent_health, etc. |
 
 Default `project_name` = `aiops-r8`, `environment` = `prod`.
 
@@ -218,6 +218,7 @@ Default `project_name` = `aiops-r8`, `environment` = `prod`.
 | `aiops-r8-ssm-runner` | Run SSM patch commands |
 | `aiops-r8-inspector-findings` | Fetch Inspector findings |
 | `aiops-r8-instance-discovery` | Discover instances by tags |
+| `aiops-r8-ssm-agent-health` | Filter instances not in SSM Managed state |
 | `aiops-r8-batch-prepare` | Prepare patch batches |
 | `aiops-r8-get-batch` | Get batch details |
 | `aiops-r8-failure-check` | Circuit-breaker failure check |
