@@ -27,7 +27,7 @@ What scales with 1000 nodes:
 | **EC2**            | ~$50–200/mo         | ~$12,500–50,000/mo     | Main cost driver; depends on instance type      |
 | **Inspector**      | Free tier / minimal | ~$0.10/CVE finding     | More instances → more findings                  |
 | **SSM**            | Minimal             | ~$0.005/instance/month | Run Command pricing                             |
-| **Lambda**         | Negligible          | ~$2–10/mo              | 5 functions; EC2 stopped, AMI cleanup run daily |
+| **Lambda**         | Negligible          | ~$2–10/mo              | 12 functions; EC2 stopped, AMI cleanup run daily |
 | **Step Functions** | Negligible          | ~$1–2/mo               | Same state transitions                          |
 | **DynamoDB**       | Negligible          | ~$1–5/year             | Circuit-breaker tables (on-demand)              |
 | **SNS**            | Negligible          | ~$0.50/year            | Patch alerts (low volume)                       |

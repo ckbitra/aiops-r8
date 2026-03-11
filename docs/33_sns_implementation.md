@@ -16,14 +16,16 @@ Amazon SNS is a fully managed pub/sub messaging service. Publishers send message
 |-----------|-------------|
 | **Topic** | `aiops-r8-{env}-patch-alerts` (e.g., `aiops-r8-prod-patch-alerts`) |
 | **Subscription** | Optional email subscription when `alert_email` is set |
-| **Publishers** | SSM Agent Health Lambda, SSM Runner Lambda |
-| **Purpose** | Alert operators when instances are excluded or CVE patching is blocked |
+| **Publishers** | SSM Agent Health Lambda, SSM Runner Lambda, SFN Failure Notifier Lambda |
+| **Purpose** | Alert operators when instances are excluded, CVE patching is blocked, or workflow fails |
 
 ---
 
 ## Execution Order – When SNS Alerts Are Sent
 
-The patch workflow runs as a Step Functions state machine. SNS alerts are sent at two points, in this order:
+SNS alerts are sent at three points:
+
+**During workflow execution:**
 
 ```
 DiscoverInstances
@@ -48,6 +50,18 @@ PrepareBatches
 │       ▼              │
 │   SSM Runner Lambda  │  ◄── SNS ALERT #2: CVE patching blocked (circuit-breaker)
 └──────────────────────┘
+```
+
+**After workflow ends (EventBridge):**
+
+```
+Step Functions execution → FAILED / ABORTED / TIMED_OUT
+       │
+       ▼
+EventBridge rule (aiops-r8-{env}-sfn-failure-rule)
+       │
+       ▼
+SFN Failure Notifier Lambda  ◄── SNS ALERT #3: Patch workflow execution failed
 ```
 
 ---
@@ -135,6 +149,44 @@ def _send_blocked_alert(blocked_cves: List[str]) -> None:
 
 ---
 
+## 3. SNS Alert #3 – Step Functions Execution Failure (EventBridge)
+
+### Execution Position
+
+Triggered **after** the Step Functions execution ends with status `FAILED`, `ABORTED`, or `TIMED_OUT`. EventBridge receives the Step Functions execution status change event and invokes the SFN Failure Notifier Lambda.
+
+### When It Fires
+
+When the patch workflow state machine execution fails for any reason (Lambda error, timeout, circuit-breaker triggered, etc.). The Lambda formats the failure details and publishes to SNS.
+
+### Implementation
+
+| Item | Details |
+|------|---------|
+| **Lambda** | `aiops-r8-sfn-failure-notifier` |
+| **Trigger** | EventBridge rule `aiops-r8-{env}-sfn-failure-rule` on Step Functions execution status change |
+| **Event pattern** | `source=aws.states`, `detail-type=Step Functions Execution Status Change`, `status=FAILED|ABORTED|TIMED_OUT` |
+| **Subject** | `AIOps: Patch workflow FAILED - {execution_name}` |
+| **Message** | Execution name, ID, status, start/stop time, error, cause, ARNs |
+
+### Code Reference
+
+```python
+# terraform/modules/patch-workflow/lambda/sfn_failure_notifier.py
+# Receives EventBridge event, publishes to SNS when status is FAILED, ABORTED, or TIMED_OUT
+sns.publish(
+    TopicArn=PATCH_ALERTS_TOPIC_ARN,
+    Subject=f"AIOps: Patch workflow FAILED - {execution_name}",
+    Message=message,  # Includes execution details, error, cause
+)
+```
+
+### Environment Variable
+
+- `PATCH_ALERTS_TOPIC_ARN` – Set by Terraform to the patch-alerts topic ARN
+
+---
+
 ## Terraform Configuration
 
 ### SNS Topic
@@ -176,12 +228,13 @@ alert_email = "ops-team@example.com"
 
 ## IAM Permissions
 
-Both Lambdas that publish to SNS have `sns:Publish` on the patch-alerts topic:
+All three Lambdas that publish to SNS have `sns:Publish` on the patch-alerts topic:
 
 | Lambda | IAM Policy |
 |--------|------------|
 | `aiops-r8-ssm-agent-health` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
 | `aiops-r8-ssm-runner` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
+| `aiops-r8-sfn-failure-notifier` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
 
 ---
 
@@ -197,5 +250,6 @@ When `alert_email` is set and Terraform creates the subscription, AWS sends a **
 |-------|------|--------|----------------|
 | 1 | CheckSSMAgentHealth | `ssm-agent-health` | Instances excluded (not SSM-managed) |
 | 2 | ApplyPatches → PatchRHELBatch / PatchWindowsBatch | `ssm-runner` | CVE(s) blocked by circuit-breaker |
+| 3 | Step Functions execution ends (FAILED/ABORTED/TIMED_OUT) | `sfn-failure-notifier` | Workflow execution failed |
 
-Both alerts use the same SNS topic (`aiops-r8-{env}-patch-alerts`) and, when configured, the same email subscription.
+All three alerts use the same SNS topic (`aiops-r8-{env}-patch-alerts`) and, when configured, the same email subscription.

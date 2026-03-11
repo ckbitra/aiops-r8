@@ -47,6 +47,10 @@
 - **`aiops-r8-ami-cleanup`**: Daily AMI retention cleanup
   - **Purpose**: Deregisters pre-patch AMIs (AI-Patch-*) older than retention days; deletes snapshots
   - **Permissions**: CloudWatch Logs, EC2 (DescribeImages, DeregisterImage, DeleteSnapshot)
+- **`aiops-r8-sfn-failure-notifier`**: Step Functions failure notification
+  - **Purpose**: When patch workflow execution fails (FAILED, ABORTED, TIMED_OUT), publishes SNS alert to patch-alerts topic
+  - **Trigger**: EventBridge rule on Step Functions execution status change
+  - **Permissions**: CloudWatch Logs, SNS Publish
 
 ### 4. Amazon Bedrock
 
@@ -69,6 +73,10 @@
 - **`aiops-r8-{env}-ami-cleanup-schedule`**: Daily AMI cleanup
   - **Schedule**: `cron(0 3 ? * * *)` – 3:00 AM UTC daily
   - **Target**: AMI Cleanup Lambda
+- **`aiops-r8-{env}-sfn-failure-rule`**: Step Functions failure notification
+  - **Event pattern**: Step Functions execution status change (FAILED, ABORTED, TIMED_OUT) for patch workflow state machine
+  - **Target**: SFN Failure Notifier Lambda
+  - **Purpose**: Sends SNS alert when patch workflow execution fails
 
 ### 6. AWS Step Functions
 
@@ -106,7 +114,7 @@
 
 ### SNS
 
-- **`{project}-{env}-patch-alerts`**: Topic for circuit-breaker alerts when CVE patching is skipped
+- **`{project}-{env}-patch-alerts`**: Topic for circuit-breaker alerts, SSM exclusion alerts, and Step Functions failure alerts
 
 ### IAM Roles
 

@@ -1277,3 +1277,97 @@ resource "aws_lambda_permission" "ami_cleanup_eventbridge" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.ami_cleanup_schedule.arn
 }
+
+# -----------------------------------------------------------------------------
+# Step Functions Failure Notification - SNS alert when patch workflow fails
+# -----------------------------------------------------------------------------
+
+data "archive_file" "sfn_failure_notifier_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/sfn_failure_notifier.py"
+  output_path = "${path.module}/lambda/sfn_failure_notifier.zip"
+}
+
+resource "aws_iam_role" "sfn_failure_notifier_lambda" {
+  name = "${var.project_name}-sfn-failure-notifier-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "sfn_failure_notifier_lambda" {
+  name = "${var.project_name}-sfn-failure-notifier-policy"
+  role = aws_iam_role.sfn_failure_notifier_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = aws_sns_topic.patch_alerts.arn
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "sfn_failure_notifier" {
+  filename         = data.archive_file.sfn_failure_notifier_zip.output_path
+  function_name   = "${var.project_name}-sfn-failure-notifier"
+  role            = aws_iam_role.sfn_failure_notifier_lambda.arn
+  handler         = "sfn_failure_notifier.lambda_handler"
+  source_code_hash = data.archive_file.sfn_failure_notifier_zip.output_base64sha256
+  runtime         = "python3.12"
+  timeout         = 30
+
+  environment {
+    variables = {
+      PATCH_ALERTS_TOPIC_ARN = aws_sns_topic.patch_alerts.arn
+    }
+  }
+
+  tags = merge(var.tags, { Name = "${var.project_name}-sfn-failure-notifier" })
+}
+
+resource "aws_cloudwatch_event_rule" "sfn_failure" {
+  name           = "${var.project_name}-${var.environment}-sfn-failure-rule"
+  description    = "Trigger SNS alert when patch workflow Step Functions execution fails"
+  event_bus_name = "default"
+
+  event_pattern = jsonencode({
+    source      = ["aws.states"]
+    "detail-type" = ["Step Functions Execution Status Change"]
+    detail = {
+      status = ["FAILED", "ABORTED", "TIMED_OUT"]
+      stateMachineArn = [aws_sfn_state_machine.patch_workflow.arn]
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "sfn_failure_notifier" {
+  rule      = aws_cloudwatch_event_rule.sfn_failure.name
+  target_id = "SfnFailureNotifier"
+  arn       = aws_lambda_function.sfn_failure_notifier.arn
+}
+
+resource "aws_lambda_permission" "sfn_failure_notifier_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sfn_failure_notifier.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.sfn_failure.arn
+}

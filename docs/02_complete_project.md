@@ -58,6 +58,8 @@ This document describes the end-to-end workflow for automated CVE patching of RH
 
 **Circuit-breaker:** EventBridge rule on EC2 `stopped` invokes EC2 Stopped Handler Lambda. Records CVE failures in DynamoDB. SSM Runner checks before patching; skips and sends SNS alert if CVE is blocked.
 
+**Workflow failure notification:** EventBridge rule on Step Functions execution status change (FAILED, ABORTED, TIMED_OUT) invokes SFN Failure Notifier Lambda. Sends SNS alert to patch-alerts topic when workflow fails.
+
 **AMI cleanup:** Daily EventBridge rule invokes AMI Cleanup Lambda to deregister old pre-patch AMIs.
 
 ## CVE-Only Patching

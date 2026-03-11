@@ -44,7 +44,7 @@
 2. **Canary / phased rollout** – ✅ Implemented. Set `canary_batch_size` (e.g. 1–2) to patch a small subset first, then expand.
 3. **SSM agent health** – ✅ Implemented. Default `check_ssm_agent_health=true`. Filters out instances not in SSM Managed state; sends SNS alert when instances are excluded.
 4. **Backup / AMI** – Keep `create_prepatch_ami=true` for critical hosts.
-5. **Alerting** – Subscribe to the patch-alerts SNS topic for circuit-breaker and failure events.
+5. **Alerting** – Subscribe to the patch-alerts SNS topic for circuit-breaker, SSM exclusion, and Step Functions workflow failure events. When `alert_email` is set, you receive emails for all three.
 6. **Approval gates** – For high-risk environments, consider manual approval before patching (future enhancement).
 
 ### RHEL 8–Specific

@@ -1,6 +1,6 @@
 # All Guardrails – Reference and Verification Guide
 
-This document lists every guardrail in the AIOps R8 patch workflow, explains how each works, and provides verification steps for both the AWS Console and Terraform code.
+This document lists every guardrail in the AIOps R8 patch workflow (14 total), explains how each works, and provides verification steps for both the AWS Console and Terraform code.
 
 ---
 
@@ -361,6 +361,35 @@ Windows patching uses `RebootOption=RebootIfNeeded`, so instances reboot when re
 
 ---
 
+## 14. Workflow Failure Notification (SNS)
+
+### What It Does
+
+When the Step Functions patch workflow execution fails (FAILED, ABORTED, or TIMED_OUT), an SNS alert is sent to the configured email. Ensures critical failures are not missed.
+
+### How It Works
+
+- **EventBridge rule** – Listens for Step Functions execution status change events on the patch workflow state machine. Matches status `FAILED`, `ABORTED`, `TIMED_OUT`.
+- **SFN Failure Notifier Lambda** – Invoked by EventBridge when a failure event occurs. Formats execution details (name, ID, error, cause) and publishes to the patch-alerts SNS topic.
+
+### Verify on AWS Console
+
+| Resource | Path | What to Check |
+|----------|------|---------------|
+| **EventBridge rule** | EventBridge → Rules → `aiops-r8-{env}-sfn-failure-rule` | Event pattern: source=aws.states, detail-type=Step Functions Execution Status Change, status=FAILED/ABORTED/TIMED_OUT |
+| **SFN Failure Notifier Lambda** | Lambda → Functions → `aiops-r8-sfn-failure-notifier` | Env var: `PATCH_ALERTS_TOPIC_ARN` |
+| **SNS topic** | SNS → Topics → `aiops-r8-{env}-patch-alerts` | Same topic as circuit-breaker; email subscription receives workflow failure alerts |
+
+### Verify in Terraform
+
+| File | Resource / Location |
+|------|---------------------|
+| `terraform/modules/patch-workflow/main.tf` | `aws_cloudwatch_event_rule.sfn_failure` |
+| `terraform/modules/patch-workflow/main.tf` | `aws_lambda_function.sfn_failure_notifier` |
+| `terraform/modules/patch-workflow/lambda/sfn_failure_notifier.py` | Publishes to SNS on failure event |
+
+---
+
 ## Quick Reference: All Variables
 
 | Variable | Default | Terraform Location |
@@ -393,6 +422,9 @@ aws dynamodb describe-table --table-name aiops-r8-prod-cve-patch-failures
 
 # EventBridge: EC2 stopped rule
 aws events describe-rule --name aiops-r8-prod-ec2-stopped-rule
+
+# EventBridge: Step Functions failure rule
+aws events describe-rule --name aiops-r8-prod-sfn-failure-rule
 
 # Lambda: list functions
 aws lambda list-functions --query "Functions[?contains(FunctionName,'aiops-r8')].FunctionName" --output table

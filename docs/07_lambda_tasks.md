@@ -1,6 +1,6 @@
-# AWS Lambda: Inspector Findings, CVE Analyzer, and SSM Runner
+# AWS Lambda: Inspector Findings, CVE Analyzer, SSM Runner, and SFN Failure Notifier
 
-This project uses three Lambda functions: **Inspector Findings** (fetches CVE data), **CVE Analyzer** (Bedrock integration), and **SSM Runner** (SSM command execution).
+This project uses multiple Lambda functions: **Inspector Findings** (fetches CVE data), **CVE Analyzer** (Bedrock integration), **SSM Runner** (SSM command execution), **SFN Failure Notifier** (workflow failure alerts), and others.
 
 ---
 
@@ -89,6 +89,18 @@ Step Functions                    Lambda                         Bedrock
 - Lambda can add logic (retries, validation, formatting) before and after the Bedrock call
 
 **In short:** *Orchestration* = running the analysis workflow; *Bedrock integration* = Lambda being the component that talks to Bedrock.
+
+---
+
+## SFN Failure Notifier Lambda (`aiops-r8-sfn-failure-notifier`)
+
+**Purpose:** Sends SNS alert when the patch workflow Step Functions execution fails (FAILED, ABORTED, or TIMED_OUT).
+
+**Flow:** EventBridge (Step Functions execution status change) → SFN Failure Notifier Lambda → SNS Publish → patch-alerts topic
+
+**Trigger:** EventBridge rule `aiops-r8-{env}-sfn-failure-rule` matches Step Functions execution status change events for the patch workflow state machine when status is FAILED, ABORTED, or TIMED_OUT.
+
+**Output:** SNS message with execution name, ID, status, error, cause, and ARNs. When `alert_email` is configured, operators receive an email.
 
 ---
 

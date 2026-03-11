@@ -32,6 +32,11 @@ output "patch_schedule_rule_arn" {
   value       = module.patch_workflow.schedule_rule_arn
 }
 
+output "sfn_failure_rule_arn" {
+  description = "ARN of the EventBridge rule for Step Functions failure notifications"
+  value       = module.patch_workflow.sfn_failure_rule_arn
+}
+
 output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id

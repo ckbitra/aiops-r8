@@ -2,7 +2,7 @@
 
 ## Overview
 
-Step Functions in this project are triggered in two ways: by EventBridge on a schedule (primary) and manually.
+Step Functions in this project are triggered in two ways: by EventBridge on a schedule (primary) and manually. A separate EventBridge rule listens for Step Functions execution failures and sends SNS alerts.
 
 ---
 
@@ -24,7 +24,18 @@ When the cron fires, EventBridge calls `states:StartExecution` on the state mach
 
 ---
 
-## 2. Manual Trigger
+## 2. Failure Notification (EventBridge → SNS)
+
+A second EventBridge rule listens for Step Functions execution status changes:
+
+- **Rule**: `aiops-r8-{env}-sfn-failure-rule`
+- **Event pattern**: `source=aws.states`, `detail-type=Step Functions Execution Status Change`, `status=FAILED|ABORTED|TIMED_OUT`
+- **Target**: Lambda `aiops-r8-sfn-failure-notifier`
+- **Purpose**: When the patch workflow fails, the Lambda publishes an SNS alert to the patch-alerts topic (same as circuit-breaker). If `alert_email` is configured, operators receive an email with execution details, error, and cause.
+
+---
+
+## 3. Manual Trigger
 
 You can also start an execution manually:
 

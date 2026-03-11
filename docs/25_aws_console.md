@@ -140,6 +140,13 @@ This document describes how to verify each component of the AIOps R8 patch workf
 2. **Schedule**: `cron(0 3 ? * * *)` (3 AM UTC daily)
 3. **Target**: Lambda `aiops-r8-ami-cleanup`
 
+### Verify Step Functions Failure Rule
+
+1. Find `**aiops-r8-{env}-sfn-failure-rule`**.
+2. **Event pattern**: Source `aws.states`, detail-type `Step Functions Execution Status Change`, status `FAILED`, `ABORTED`, `TIMED_OUT`
+3. **Target**: Lambda `aiops-r8-sfn-failure-notifier`
+4. **Purpose**: Sends SNS alert when patch workflow execution fails
+
 ---
 
 ## 5. Amazon Bedrock
@@ -276,6 +283,7 @@ This typically affects third-party models (e.g., Claude Sonnet 4.6) that require
 | `aiops-r8-ssm-runner-lambda-role`         | SSM Runner Lambda                   |
 | `aiops-r8-ec2-stopped-handler-role`       | EC2 Stopped Handler (circuit-breaker) |
 | `aiops-r8-ami-cleanup-role`               | AMI Cleanup Lambda                  |
+| `aiops-r8-sfn-failure-notifier-role`      | SFN Failure Notifier (workflow failure SNS) |
 | `aiops-r8-patch-stepfunctions-role`       | Step Functions execution            |
 | `aiops-r8-patch-eventbridge-role`         | EventBridge to start Step Functions |
 
@@ -291,11 +299,11 @@ This typically affects third-party models (e.g., Claude Sonnet 4.6) that require
 | Component          | What to Check                                                   |
 | ------------------ | --------------------------------------------------------------- |
 | **Inspector**      | EC2 enabled in Settings                                         |
-| **Lambda**         | All 5 functions exist (inspector, cve-analyzer, ssm-runner, ec2-stopped-handler, ami-cleanup) |
+| **Lambda**         | All 12 functions exist (cve-analyzer, ssm-runner, inspector-findings, ssm-agent-health, sfn-failure-notifier, etc.) |
 | **Step Functions** | State machine `aiops-r8-patch-workflow` exists                  |
-| **EventBridge**    | Rules: patch-schedule, ec2-stopped-rule, ami-cleanup-schedule   |
+| **EventBridge**    | Rules: patch-schedule, ec2-stopped-rule, ami-cleanup-schedule, sfn-failure-rule   |
 | **DynamoDB**       | Tables: cve-patch-failures, patch-executions                    |
-| **SNS**            | Topic `aiops-r8-{env}-patch-alerts` for circuit-breaker          |
+| **SNS**            | Topic `aiops-r8-{env}-patch-alerts` for circuit-breaker, SSM exclusions, workflow failures |
 | **Bedrock**        | Model access granted for `us.amazon.nova-2-lite-v1:0`            |
 | **SSM**            | Managed instances Online, patch baseline exists                 |
 | **EC2**            | 4 instances (2 RHEL8, 2 Windows) running                        |

@@ -71,8 +71,8 @@ Validates configuration syntax only (does not check if resources exist in AWS).
 | Patch Workflow | SNS Topic | 1 | patch-alerts |
 | Patch Workflow | SSM Patch Baseline | 1 | windows-cve-baseline |
 | Patch Workflow | Step Functions | 1 | patch workflow |
-| Patch Workflow | EventBridge Rules | 3 | patch schedule, ec2 stopped, ami cleanup |
-| Patch Workflow | Lambda Functions | 11 | cve_analyzer, ssm_runner, inspector_findings, ssm_agent_health, etc. |
+| Patch Workflow | EventBridge Rules | 4 | patch schedule, ec2 stopped, ami cleanup, sfn failure |
+| Patch Workflow | Lambda Functions | 12 | cve_analyzer, ssm_runner, inspector_findings, ssm_agent_health, sfn_failure_notifier, etc. |
 
 Default `project_name` = `aiops-r8`, `environment` = `prod`.
 
@@ -155,7 +155,7 @@ Default `project_name` = `aiops-r8`, `environment` = `prod`.
 
 ### 6. SNS Topic (Patch Alerts)
 
-**Purpose:** Circuit-breaker alerts when a CVE is blocked.
+**Purpose:** Circuit-breaker alerts, SSM exclusion alerts, and Step Functions workflow failure alerts.
 
 | Check | Command |
 |-------|---------|
@@ -196,13 +196,14 @@ Default `project_name` = `aiops-r8`, `environment` = `prod`.
 
 ### 9. EventBridge Rules
 
-**Purpose:** Schedule patch runs, react to EC2 stopped, trigger AMI cleanup.
+**Purpose:** Schedule patch runs, react to EC2 stopped, trigger AMI cleanup, notify on workflow failure.
 
 | Rule | Purpose | Verify |
 |------|---------|--------|
 | **patch_schedule** | Cron for patch workflow | `aws events list-rules --name-prefix aiops-r8` |
 | **ec2_stopped** | Circuit-breaker on instance stop | Same command |
 | **ami_cleanup_schedule** | Periodic AMI cleanup | Same command |
+| **sfn_failure** | SNS alert when Step Functions execution fails | Same command |
 
 **Console:** EventBridge → Rules → filter by `aiops-r8`.
 
@@ -210,7 +211,7 @@ Default `project_name` = `aiops-r8`, `environment` = `prod`.
 
 ### 10. Lambda Functions
 
-**Purpose:** CVE analysis, Inspector findings, SSM runner, instance discovery, batch logic, failure check, maintenance window, EC2 stopped handler, AMI cleanup.
+**Purpose:** CVE analysis, Inspector findings, SSM runner, instance discovery, batch logic, failure check, maintenance window, EC2 stopped handler, AMI cleanup, workflow failure notification.
 
 | Function | Purpose |
 |----------|---------|
@@ -225,6 +226,7 @@ Default `project_name` = `aiops-r8`, `environment` = `prod`.
 | `aiops-r8-maintenance-window` | Maintenance window check |
 | `aiops-r8-ec2-stopped-handler` | Handle EC2 stopped events |
 | `aiops-r8-ami-cleanup` | Clean up old AMIs |
+| `aiops-r8-sfn-failure-notifier` | SNS alert when Step Functions execution fails |
 
 **Verify all:**
 ```bash

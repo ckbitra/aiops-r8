@@ -108,16 +108,18 @@ Recommendations for enhancing the project across reliability, scalability, obser
 
 ## 10. Error Handling and Alerting
 
-**Current gaps:**
+**Implemented:**
+
+- **Step Functions failure notification** – EventBridge rule `aiops-r8-{env}-sfn-failure-rule` listens for Step Functions execution status FAILED, ABORTED, or TIMED_OUT. SFN Failure Notifier Lambda publishes to the patch-alerts SNS topic. When `alert_email` is set, operators receive an email with execution details, error, and cause.
+
+**Remaining gaps:**
 
 - Exceptions in Lambda are often caught and ignored (`except Exception: pass`).
-- No alert when the workflow fails (e.g., Step Functions execution failed).
 - No dead-letter or fallback for failed Lambda invocations.
 
 **Suggested improvements:**
 
 - Replace silent `pass` with logging and, where appropriate, re-raise or return error status.
-- EventBridge or Step Functions failure notification: SNS/email when execution fails.
 - Configure Lambda dead-letter queues (DLQ) for failed invocations.
 - Add retry policies for transient failures (e.g., DynamoDB throttling).
 
@@ -128,7 +130,7 @@ Recommendations for enhancing the project across reliability, scalability, obser
 **Current considerations:**
 
 - Pre-patch AMIs for 100 instances: 100 EBS snapshots; cost scales with instance count and retention.
-- Lambda: 5 functions; some run daily (AMI cleanup) or on every EC2 stop.
+- Lambda: 12 functions; some run daily (AMI cleanup) or on every EC2 stop.
 
 **Suggested improvements:**
 
@@ -161,6 +163,6 @@ Recommendations for enhancing the project across reliability, scalability, obser
 | Instance exclusion / dry-run | Medium | Low | More control over patching |
 | Scalability (SSM chunks, Inspector pagination) | Medium | Medium | Supports large fleets |
 | Unit tests | Medium | Medium | Safer changes |
-| Error handling and alerting | Medium | Low | Faster incident response |
+| Error handling and alerting (SFN failure SNS) | Medium | Low | ✅ Implemented – SNS on workflow failure |
 | Recovery (ASG/LB integration) | Low | High | Better automation |
 | Multi-account support | Low | High | Enterprise deployment |

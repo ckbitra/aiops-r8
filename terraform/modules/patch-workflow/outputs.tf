@@ -37,6 +37,11 @@ output "patch_alerts_topic_arn" {
   value       = aws_sns_topic.patch_alerts.arn
 }
 
+output "sfn_failure_rule_arn" {
+  description = "ARN of EventBridge rule for Step Functions failure notifications"
+  value       = aws_cloudwatch_event_rule.sfn_failure.arn
+}
+
 output "cve_patch_failures_table" {
   description = "DynamoDB table for CVE patch failures (circuit-breaker)"
   value       = aws_dynamodb_table.cve_patch_failures.name
