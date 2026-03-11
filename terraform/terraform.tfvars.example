@@ -4,7 +4,7 @@
 # Copy to terraform.tfvars and customize for your environment
 # =============================================================================
 
-aws_region   = "us-east-1"
+aws_region   = "us-east-2"
 environment = "prod"
 project_name = "aiops-r8"
 
@@ -18,3 +18,6 @@ windows_instance_type = "t2.micro"
 # Bedrock model for CVE analysis
 # Bedrock model for CVE analysis (us.amazon.nova-2-lite-v1:0 = Amazon Nova 2 Lite)
 bedrock_model = "us.amazon.nova-2-lite-v1:0"
+
+# SNS patch alerts - email for circuit-breaker and SSM exclusion notifications
+alert_email = "chandrakumar.bitra@centennial-tech.com"
