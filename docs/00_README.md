@@ -29,3 +29,5 @@ Docs are numbered in **project execution order**:
 | 28–29 | diagram, chart | Architecture visuals |
 | 30–31 | presentation, p-slides | Presentation |
 | 32 | total_cost | Cost estimate |
+| 33 | sns_implementation | SNS alerts (execution order) |
+| 34 | scenario1_100_rhel_windows | Scenario: 100 RHEL + 100 Windows workflow & diagram |
