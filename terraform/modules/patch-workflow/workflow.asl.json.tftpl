@@ -1,0 +1,355 @@
+{
+  "Comment": "Production-safe CVE patch workflow (Amazon Inspector)",
+  "StartAt": "DiscoverInstances",
+  "States": {
+    "DiscoverInstances": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${instance_discovery_function}",
+        "Payload": {
+          "vpc_id": "${vpc_id}",
+          "use_dynamic_discovery": ${use_dynamic_discovery},
+          "rhel8_ids": ${rhel8_ids_json},
+          "windows_ids": ${windows_ids_json}
+        }
+      },
+      "ResultPath": "$.discoveredInstances",
+      "Next": "CheckSSMAgentHealth"
+    },
+    "CheckSSMAgentHealth": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ssm_agent_health_function}",
+        "Payload": {
+          "rhel8_ids.$": "$.discoveredInstances.Payload.body.rhel8_ids",
+          "windows_ids.$": "$.discoveredInstances.Payload.body.windows_ids"
+        }
+      },
+      "ResultPath": "$.ssmHealthCheck",
+      "Next": "FetchInspectorFindings"
+    },
+    "FetchInspectorFindings": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${inspector_findings_function}",
+        "Payload": {
+          "vpc_id": "${vpc_id}",
+          "rhel8_ids.$": "$.ssmHealthCheck.Payload.body.rhel8_ids",
+          "windows_ids.$": "$.ssmHealthCheck.Payload.body.windows_ids"
+        }
+      },
+      "ResultPath": "$.inspectorFindings",
+      "Next": "AnalyzeCVEs"
+    },
+    "AnalyzeCVEs": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${cve_analyzer_function}",
+        "Payload": {
+          "action": "analyze",
+          "inspector_findings.$": "$.inspectorFindings.Payload.body",
+          "rhel8_ids.$": "$.ssmHealthCheck.Payload.body.rhel8_ids",
+          "windows_ids.$": "$.ssmHealthCheck.Payload.body.windows_ids"
+        }
+      },
+      "ResultPath": "$.analyzeResult",
+      "Next": "CheckMaintenanceWindow"
+    },
+    "CheckMaintenanceWindow": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${maintenance_window_function}",
+        "Payload": {}
+      },
+      "ResultPath": "$.maintenanceCheck",
+      "Next": "CheckMaintenanceChoice"
+    },
+    "CheckMaintenanceChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.maintenanceCheck.Payload.body.within_window",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.analyzeResult.Payload.body.has_critical_cves",
+              "BooleanEquals": true
+            }
+          ],
+          "Next": "PrepareBatches"
+        }
+      ],
+      "Default": "NotifyNoPatch"
+    },
+    "PrepareBatches": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${batch_prepare_function}",
+        "Payload": {
+          "rhel8_ids.$": "$.ssmHealthCheck.Payload.body.rhel8_ids",
+          "windows_ids.$": "$.ssmHealthCheck.Payload.body.windows_ids",
+          "critical_cve_ids.$": "$.analyzeResult.Payload.body.critical_cve_ids",
+          "batch_size": ${batch_size},
+          "canary_batch_size": ${canary_batch_size}
+        }
+      },
+      "ResultPath": "$.batches",
+      "Next": "ApplyPatches"
+    },
+    "NotifyNoPatch": {
+      "Type": "Pass",
+      "Parameters": {
+        "message": "No critical CVEs - skipping patch application"
+      },
+      "ResultPath": "$.skipResult",
+      "End": true
+    },
+    "ApplyPatches": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "MapRHELBatches",
+          "States": {
+            "MapRHELBatches": {
+              "Type": "Map",
+              "ItemsPath": "$.batches.Payload.body.rhel.batches",
+              "MaxConcurrency": 1,
+              "Parameters": {
+                "instance_ids.$": "$$.Map.Item.Value",
+                "critical_cve_ids.$": "$.batches.Payload.body.rhel.critical_cve_ids",
+                "patch_mode": "rhel",
+                "document_name": "AWS-RunShellScript",
+                "dry_run": ${dry_run},
+                "create_prepatch_ami": ${create_prepatch_ami},
+                "parameters": {
+                  "commands": ["sudo dnf update --security -y || sudo yum update --security -y"]
+                }
+              },
+              "Iterator": {
+                "StartAt": "PatchRHELBatch",
+                "States": {
+                  "PatchRHELBatch": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${ssm_runner_function}",
+                      "Payload": {
+                        "instance_ids.$": "$.instance_ids",
+                        "critical_cve_ids.$": "$.critical_cve_ids",
+                        "patch_mode": "rhel",
+                        "document_name": "AWS-RunShellScript",
+                        "dry_run": ${dry_run},
+                        "create_prepatch_ami": ${create_prepatch_ami},
+                        "parameters": {
+                          "commands": ["sudo dnf update --security -y || sudo yum update --security -y"]
+                        }
+                      }
+                    },
+                    "ResultPath": "$.patchResult",
+                    "Next": "WaitAfterRHELBatch"
+                  },
+                  "WaitAfterRHELBatch": {
+                    "Type": "Wait",
+                    "Seconds": 180,
+                    "Next": "CheckRHELFailure"
+                  },
+                  "CheckRHELFailure": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${failure_check_function}",
+                      "Payload": {}
+                    },
+                    "ResultPath": "$.failureCheck",
+                    "Next": "ChoiceRHELAbort"
+                  },
+                  "ChoiceRHELAbort": {
+                    "Type": "Choice",
+                    "Choices": [
+                      {
+                        "Variable": "$.failureCheck.Payload.body.abort",
+                        "BooleanEquals": true,
+                        "Next": "RHELFail"
+                      }
+                    ],
+                    "Default": "RHELSucceed"
+                  },
+                  "RHELFail": {
+                    "Type": "Fail",
+                    "Error": "CircuitBreakerTriggered",
+                    "Cause": "Instance stopped after patch"
+                  },
+                  "RHELSucceed": {
+                    "Type": "Pass",
+                    "End": true
+                  }
+                }
+              },
+              "ResultPath": "$.rhelApplyResult",
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "MapWindowsBatches",
+          "States": {
+            "MapWindowsBatches": {
+              "Type": "Map",
+              "ItemsPath": "$.batches.Payload.body.windows.batches",
+              "MaxConcurrency": 1,
+              "Parameters": {
+                "instance_ids.$": "$$.Map.Item.Value",
+                "critical_cve_ids.$": "$.batches.Payload.body.windows.critical_cve_ids",
+                "patch_mode": "windows",
+                "document_name": "AWS-RunPatchBaseline",
+                "dry_run": ${dry_run},
+                "create_prepatch_ami": ${create_prepatch_ami},
+                "parameters": {
+                  "Operation": "Install",
+                  "RebootOption": "RebootIfNeeded"
+                }
+              },
+              "Iterator": {
+                "StartAt": "PatchWindowsBatch",
+                "States": {
+                  "PatchWindowsBatch": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${ssm_runner_function}",
+                      "Payload": {
+                        "instance_ids.$": "$.instance_ids",
+                        "critical_cve_ids.$": "$.critical_cve_ids",
+                        "patch_mode": "windows",
+                        "document_name": "AWS-RunPatchBaseline",
+                        "dry_run": ${dry_run},
+                        "create_prepatch_ami": ${create_prepatch_ami},
+                        "parameters": {
+                          "Operation": "Install",
+                          "RebootOption": "RebootIfNeeded"
+                        }
+                      }
+                    },
+                    "ResultPath": "$.patchResult",
+                    "Next": "WaitAfterWindowsBatch"
+                  },
+                  "WaitAfterWindowsBatch": {
+                    "Type": "Wait",
+                    "Seconds": 180,
+                    "Next": "CheckWindowsFailure"
+                  },
+                  "CheckWindowsFailure": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${failure_check_function}",
+                      "Payload": {}
+                    },
+                    "ResultPath": "$.failureCheck",
+                    "Next": "ChoiceWindowsAbort"
+                  },
+                  "ChoiceWindowsAbort": {
+                    "Type": "Choice",
+                    "Choices": [
+                      {
+                        "Variable": "$.failureCheck.Payload.body.abort",
+                        "BooleanEquals": true,
+                        "Next": "WindowsFail"
+                      }
+                    ],
+                    "Default": "WindowsSucceed"
+                  },
+                  "WindowsFail": {
+                    "Type": "Fail",
+                    "Error": "CircuitBreakerTriggered",
+                    "Cause": "Instance stopped after patch"
+                  },
+                  "WindowsSucceed": {
+                    "Type": "Pass",
+                    "End": true
+                  }
+                }
+              },
+              "ResultPath": "$.windowsApplyResult",
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.applyResult",
+      "Next": "PostPatch",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
+        }
+      ]
+    },
+    "NotifyFailure": {
+      "Type": "Pass",
+      "Parameters": {
+        "message": "Circuit breaker triggered - patching stopped"
+      },
+      "ResultPath": "$.failureResult",
+      "End": true
+    },
+    "PostPatch": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "PostPatchRHEL",
+          "States": {
+            "PostPatchRHEL": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${ssm_runner_function}",
+                "Payload": {
+                  "document_name": "AWS-RunShellScript",
+                  "instance_ids.$": "$.discoveredInstances.Payload.body.rhel8_ids",
+                  "parameters": {
+                    "commands": [
+                      "echo 'Post-patch verification' && dnf check-update --security 2>/dev/null || echo 'No pending security updates'"
+                    ]
+                  }
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "PostPatchWindows",
+          "States": {
+            "PostPatchWindows": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${ssm_runner_function}",
+                "Payload": {
+                  "document_name": "AWS-RunPowerShellScript",
+                  "instance_ids.$": "$.discoveredInstances.Payload.body.windows_ids",
+                  "parameters": {
+                    "commands": ["Write-Output 'Post-patch verification complete'"]
+                  }
+                }
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.postPatchResult",
+      "End": true
+    }
+  }
+}

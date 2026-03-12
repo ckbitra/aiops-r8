@@ -34,9 +34,9 @@ This prevents cascading failures across multiple instances.
 
 | File | Resource / Location |
 |------|---------------------|
-| `terraform/modules/patch-workflow/main.tf` | `aws_dynamodb_table.cve_patch_failures` (lines ~18–38) |
-| `terraform/modules/patch-workflow/main.tf` | `aws_cloudwatch_event_rule.ec2_stopped` (lines ~1095–1105) |
-| `terraform/modules/patch-workflow/main.tf` | `aws_lambda_function.ec2_stopped_handler` |
+| `terraform/modules/patch-workflow/dynamodb.tf` | `aws_dynamodb_table.cve_patch_failures` |
+| `terraform/modules/patch-workflow/eventbridge.tf` | `aws_cloudwatch_event_rule.ec2_stopped` |
+| `terraform/modules/patch-workflow/lambda.tf` | `aws_lambda_function.ec2_stopped_handler` |
 | `terraform/modules/patch-workflow/lambda/ec2_stopped_handler.py` | Records CVE to `cve_patch_failures` |
 | `terraform/modules/patch-workflow/lambda/ssm_runner.py` | `_check_blocked_cves()` – queries before patching |
 
@@ -95,7 +95,7 @@ Before applying patches, the SSM Runner creates an AMI of each target instance. 
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/modules/patch-workflow/variables.tf` | `variable "create_prepatch_ami"` (default: true) |
-| `terraform/modules/patch-workflow/main.tf` | `create_prepatch_ami` passed to SSM Runner payload |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | `create_prepatch_ami` passed to SSM Runner payload |
 | `terraform/modules/patch-workflow/lambda/ssm_runner.py` | `_create_prepatch_amis()` – `ec2.create_image()` |
 | `terraform/main.tf` | `create_prepatch_ami = var.create_prepatch_ami` |
 
@@ -122,7 +122,7 @@ When enabled, the SSM Runner logs what it would patch but does not run any SSM c
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/variables.tf` | `variable "dry_run"` (default: false) |
-| `terraform/modules/patch-workflow/main.tf` | `dry_run = var.dry_run` in ApplyPatches payload |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | `dry_run` in ApplyPatches payload |
 | `terraform/modules/patch-workflow/lambda/ssm_runner.py` | `if dry_run: return {...}` before SSM/AMI |
 
 ---
@@ -150,7 +150,7 @@ Patching runs only during a configured UTC time window (default 02:00–06:00 UT
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/modules/patch-workflow/variables.tf` | `check_maintenance_window` (default: true), `maintenance_start_hour_utc` (2), `maintenance_end_hour_utc` (6) |
-| `terraform/modules/patch-workflow/main.tf` | `aws_lambda_function.maintenance_window` – env vars |
+| `terraform/modules/patch-workflow/lambda.tf` | `aws_lambda_function.maintenance_window` – env vars |
 | `terraform/modules/patch-workflow/lambda/maintenance_window.py` | Logic for `within_window` |
 | `terraform/main.tf` | `check_maintenance_window = var.check_maintenance_window` |
 
@@ -205,8 +205,8 @@ Before patching, filters out instances that are not in SSM Managed state (PingSt
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/modules/patch-workflow/variables.tf` | `variable "check_ssm_agent_health"` (default: true) |
-| `terraform/modules/patch-workflow/main.tf` | `aws_lambda_function.ssm_agent_health` |
-| `terraform/modules/patch-workflow/main.tf` | Step Functions `CheckSSMAgentHealth` state |
+| `terraform/modules/patch-workflow/lambda.tf` | `aws_lambda_function.ssm_agent_health` |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | Step Functions `CheckSSMAgentHealth` state |
 | `terraform/modules/patch-workflow/lambda/ssm_agent_health.py` | `_get_managed_instance_ids()` – `DescribeInstanceInformation`, filter `PingStatus=Online` |
 | `terraform/main.tf` | `check_ssm_agent_health = var.check_ssm_agent_health` |
 
@@ -233,7 +233,7 @@ When `canary_batch_size` > 0, the first batch patches fewer instances (e.g. 1–
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/modules/patch-workflow/variables.tf` | `variable "canary_batch_size"` (default: 0) |
-| `terraform/modules/patch-workflow/main.tf` | `canary_batch_size = var.canary_batch_size` in PrepareBatches payload |
+| `terraform/modules/patch-workflow/step_functions.tf` | `canary_batch_size` in PrepareBatches payload |
 | `terraform/modules/patch-workflow/lambda/batch_prepare.py` | `canary_batch_size` logic – first batch vs remaining batches |
 | `terraform/main.tf` | `canary_batch_size = var.canary_batch_size` |
 | `tests/test_batch_prepare.py` | `test_batch_prepare_canary` |
@@ -262,8 +262,8 @@ Instances are patched in batches (default 10) instead of all at once. Reduces bl
 | File | Resource / Location |
 |------|---------------------|
 | `terraform/modules/patch-workflow/variables.tf` | `variable "batch_size"` (default: 10) |
-| `terraform/modules/patch-workflow/main.tf` | `batch_size = var.batch_size` in PrepareBatches |
-| `terraform/modules/patch-workflow/main.tf` | Map states `MapRHELBatches`, `MapWindowsBatches` with `ItemsPath` = batches |
+| `terraform/modules/patch-workflow/step_functions.tf` | `batch_size` in PrepareBatches |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | Map states `MapRHELBatches`, `MapWindowsBatches` with `ItemsPath` = batches |
 | `terraform/modules/patch-workflow/lambda/batch_prepare.py` | `batches = [instance_ids[i:i+batch_size] for ...]` |
 
 ---
@@ -313,7 +313,7 @@ RHEL patching uses `dnf update --security -y` (or `yum update --security -y`), s
 
 | File | Resource / Location |
 |------|---------------------|
-| `terraform/modules/patch-workflow/main.tf` | MapRHELBatches parameters: `"commands" = ["sudo dnf update --security -y \|\| sudo yum update --security -y"]` |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | MapRHELBatches parameters: `"commands"` for RHEL security updates |
 
 ---
 
@@ -356,7 +356,7 @@ Windows patching uses `RebootOption=RebootIfNeeded`, so instances reboot when re
 
 | File | Resource / Location |
 |------|---------------------|
-| `terraform/modules/patch-workflow/main.tf` | ApplyPatches Windows parameters: `"RebootOption" = "RebootIfNeeded"` |
+| `terraform/modules/patch-workflow/workflow.asl.json.tftpl` | ApplyPatches Windows parameters: `"RebootOption" = "RebootIfNeeded"` |
 | `terraform/modules/patch-workflow/lambda/batch_prepare.py` | `{"Operation": "Install", "RebootOption": "RebootIfNeeded"}` |
 
 ---
@@ -384,8 +384,8 @@ When the Step Functions patch workflow execution fails (FAILED, ABORTED, or TIME
 
 | File | Resource / Location |
 |------|---------------------|
-| `terraform/modules/patch-workflow/main.tf` | `aws_cloudwatch_event_rule.sfn_failure` |
-| `terraform/modules/patch-workflow/main.tf` | `aws_lambda_function.sfn_failure_notifier` |
+| `terraform/modules/patch-workflow/eventbridge.tf` | `aws_cloudwatch_event_rule.sfn_failure` |
+| `terraform/modules/patch-workflow/lambda.tf` | `aws_lambda_function.sfn_failure_notifier` |
 | `terraform/modules/patch-workflow/lambda/sfn_failure_notifier.py` | Publishes to SNS on failure event |
 
 ---

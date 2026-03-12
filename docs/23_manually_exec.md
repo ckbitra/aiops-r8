@@ -7,7 +7,7 @@ This document describes how to manually execute the AIOps R8 patch workflow and 
 ## Prerequisites
 
 1. **AWS CLI** configured with credentials that have permissions for:
-   - Step Functions, Lambda, SSM, EC2, Bedrock, Inspector
+  - Step Functions, Lambda, SSM, EC2, Bedrock, Inspector
 2. **Terraform applied** – Infrastructure must be deployed
 3. **Instance IDs** – RHEL8 and Windows instances must exist and be SSM-managed
 4. **Bedrock access** – `us.amazon.nova-2-lite-v1:0` enabled in your region
@@ -37,6 +37,7 @@ terraform output
 ```
 
 Example output:
+
 ```
 patch_workflow_state_machine_arn = "arn:aws:states:us-east-2:123456789012:stateMachine:aiops-r8-patch-workflow"
 vpc_id = "vpc-0abc123def456"
@@ -50,18 +51,17 @@ windows_instance_ids = ["i-0ghi789", "i-0jkl012"]
 
 ### Via AWS CLI
 
-```bash
-# Replace with your state machine ARN from terraform output
+### # Replace with your state machine ARN from terraform output
 STATE_MACHINE_ARN="arn:aws:states:us-east-2:YOUR_ACCOUNT:stateMachine:aiops-r8-patch-workflow"
 
 aws stepfunctions start-execution \
   --state-machine-arn "$STATE_MACHINE_ARN" \
   --input '{}'
-```
 
 The workflow uses instance IDs and VPC ID baked into the Terraform definition, so no input is required.
 
 **Response:**
+
 ```json
 {
   "executionArn": "arn:aws:states:us-east-2:123456789012:execution:aiops-r8-patch-workflow:manual-20240305-001",
@@ -247,6 +247,7 @@ aws ssm send-command \
 ```
 
 **Report locations:**
+
 - RHEL8: `/var/log/aiops/rhel8_scan_report.txt`, `/var/log/aiops/post_patch_report.txt`
 - Windows: `C:\aiops\reports\windows_scan_report.txt`, `C:\aiops\reports\post_patch_report.txt`
 
@@ -268,11 +269,14 @@ aws events enable-rule --name aiops-r8-patch-schedule
 
 ## 11. Troubleshooting
 
-| Issue | Action |
-|-------|--------|
-| Execution fails at FetchInspectorFindings | Verify Inspector v2 is enabled; check Lambda logs; ensure VPC ID is correct |
-| No Inspector findings | New instances may need time; Inspector scans periodically; check Inspector console |
-| Execution fails at ApplyPatches | Verify RHEL8/Windows instances are SSM-managed; check SSM Agent status |
-| Bedrock analysis fails | Ensure `us.amazon.nova-2-lite-v1:0` is enabled in Bedrock Model access |
-| No instance IDs | Run `terraform output`; ensure EC2 instances were created successfully |
-| Lambda timeout | Increase SSM Runner Lambda timeout in Terraform (default 300s) |
+
+| Issue                                     | Action                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| Execution fails at FetchInspectorFindings | Verify Inspector v2 is enabled; check Lambda logs; ensure VPC ID is correct        |
+| No Inspector findings                     | New instances may need time; Inspector scans periodically; check Inspector console |
+| Execution fails at ApplyPatches           | Verify RHEL8/Windows instances are SSM-managed; check SSM Agent status             |
+| Bedrock analysis fails                    | Ensure `us.amazon.nova-2-lite-v1:0` is enabled in Bedrock Model access             |
+| No instance IDs                           | Run `terraform output`; ensure EC2 instances were created successfully             |
+| Lambda timeout                            | Increase SSM Runner Lambda timeout in Terraform (default 300s)                     |
+
+

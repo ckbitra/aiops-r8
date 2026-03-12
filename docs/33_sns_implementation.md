@@ -192,7 +192,7 @@ sns.publish(
 ### SNS Topic
 
 ```hcl
-# terraform/modules/patch-workflow/main.tf
+# terraform/modules/patch-workflow/sns.tf, lambda.tf, eventbridge.tf
 resource "aws_sns_topic" "patch_alerts" {
   name = "${var.project_name}-${var.environment}-patch-alerts"
   tags = var.tags

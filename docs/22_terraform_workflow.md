@@ -13,7 +13,18 @@ terraform/
     ├── vpc/             # VPC, subnets, NAT, security groups
     ├── ec2-rhel8/       # RHEL8 EC2 instances (x2)
     ├── ec2-windows/     # Windows EC2 instances (x2)
-    └── patch-workflow/  # Inspector Findings Lambda, CVE Analyzer Lambda, SSM Runner Lambda, EventBridge, Step Functions, SSM, Bedrock
+    └── patch-workflow/  # CVE patch workflow (split for maintainability)
+        ├── main.tf           # Module overview
+        ├── dynamodb.tf       # Circuit-breaker tables, patch history
+        ├── sns.tf            # Alert topic and email subscription
+        ├── ssm.tf            # Windows patch baseline
+        ├── iam.tf            # Step Functions and EventBridge roles
+        ├── lambda.tf         # All Lambda functions
+        ├── step_functions.tf  # Patch workflow state machine
+        ├── eventbridge.tf    # Schedules and event triggers
+        ├── workflow.asl.json.tftpl  # Step Functions definition (template)
+        ├── variables.tf
+        └── outputs.tf
 ```
 
 ## Deployment Flow
