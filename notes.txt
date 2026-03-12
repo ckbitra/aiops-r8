@@ -1,3 +1,11 @@
+Where	What to check
+Step Functions	AWS Console → Step Functions → State machines → aiops-r8-patch-workflow → Executions
+EventBridge	AWS Console → EventBridge → Rules → aiops-r8-patch-schedule → Metrics (invocations)
+CloudWatch Logs	AWS Console → CloudWatch → Log groups → /aws/lambda/aiops-r8-*
+CloudWatch Metrics	EventBridge rule metrics (Invocations, TriggeredRules)
+
+
+
 1) Create terraform code using modularity to create:
 add 2 rhel8 free tier servers 
 add 2 free tier windows servers

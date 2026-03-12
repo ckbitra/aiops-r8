@@ -40,3 +40,13 @@ To change the workflow logic, edit `workflow.asl.json.tftpl`. New template varia
 - **New EventBridge rule** → `eventbridge.tf`
 - **New Step Functions state** → `workflow.asl.json.tftpl` and `step_functions.tf` (if new template vars)
 
+## Monitoring Script
+
+Run `scripts/monitor-patch-workflow.sh` to gather EventBridge rule status, Step Functions executions, and CloudWatch log groups:
+
+```bash
+./scripts/monitor-patch-workflow.sh
+```
+
+Override defaults with environment variables: `PROJECT_NAME`, `ENVIRONMENT`, `AWS_REGION`.
+

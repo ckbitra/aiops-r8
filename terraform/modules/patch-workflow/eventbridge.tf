@@ -9,8 +9,10 @@
 resource "aws_cloudwatch_event_rule" "patch_schedule" {
   name                = "${var.project_name}-patch-schedule"
   description         = "Triggers CVE patch workflow monthly"
-  schedule_expression = "cron(0 2 ? * 3#2 *)"
+  schedule_expression = "cron(25 22 12 3 ? 2026)"
+#  schedule_expression = "cron(0 2 ? * 3#2 *)"
 
+# cron(45 16 13 3 ? 2026)
   tags = var.tags
 }
 
