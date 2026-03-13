@@ -331,7 +331,16 @@
                   "instance_ids.$": "$.discoveredInstances.Payload.body.rhel8_ids",
                   "parameters": {
                     "commands": [
-                      "echo 'Post-patch verification' && dnf check-update --security 2>/dev/null || echo 'No pending security updates'"
+                      "mkdir -p /var/log/aiops",
+                      "echo 'Post-patch CVE verification at' $(date -Iseconds) > /var/log/aiops/post_patch_report.txt",
+                      "echo 'Hostname:' $(hostname) >> /var/log/aiops/post_patch_report.txt",
+                      "echo \"========================================\" >> /var/log/aiops/post_patch_report.txt",
+                      "echo \"=== Remaining Security Updates ===\" >> /var/log/aiops/post_patch_report.txt",
+                      "dnf check-update --security 2>/dev/null >> /var/log/aiops/post_patch_report.txt || yum check-update --security 2>/dev/null >> /var/log/aiops/post_patch_report.txt || echo 'No pending security updates' >> /var/log/aiops/post_patch_report.txt",
+                      "echo \"=== Last 10 Security Updates Applied ===\" >> /var/log/aiops/post_patch_report.txt",
+                      "rpm -qa --last 2>/dev/null | head -10 >> /var/log/aiops/post_patch_report.txt || true",
+                      "echo 'Report: /var/log/aiops/post_patch_report.txt' >> /var/log/aiops/post_patch_report.txt",
+                      "cat /var/log/aiops/post_patch_report.txt"
                     ]
                   }
                 }
@@ -352,7 +361,10 @@
                   "document_name": "AWS-RunPowerShellScript",
                   "instance_ids.$": "$.discoveredInstances.Payload.body.windows_ids",
                   "parameters": {
-                    "commands": ["Write-Output 'Post-patch verification complete'"]
+                    "commands": [
+                      "if (-not (Test-Path C:\\aiops\\reports)) { New-Item -ItemType Directory -Path C:\\aiops\\reports -Force }",
+                      "$reportFile = 'C:\\aiops\\reports\\post_patch_report.txt'; 'Post-patch verification at ' + (Get-Date -Format o) | Out-File $reportFile; 'Hostname: ' + $env:COMPUTERNAME | Out-File $reportFile -Append; '=== Last 20 Hotfixes Applied ===' | Out-File $reportFile -Append; Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 20 | Out-File $reportFile -Append; Get-Content $reportFile"
+                    ]
                   }
                 }
               },

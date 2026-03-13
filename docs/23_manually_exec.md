@@ -272,6 +272,7 @@ aws events enable-rule --name aiops-r8-patch-schedule
 
 | Issue                                     | Action                                                                             |
 | ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| No email received after patching           | Check spam folder; **confirm SNS subscription** – AWS sends confirmation email, you must click the link |
 | Execution fails at FetchInspectorFindings | Verify Inspector v2 is enabled; check Lambda logs; ensure VPC ID is correct        |
 | No Inspector findings                     | New instances may need time; Inspector scans periodically; check Inspector console |
 | Execution fails at ApplyPatches           | Verify RHEL8/Windows instances are SSM-managed; check SSM Agent status             |
