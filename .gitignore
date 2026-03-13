@@ -3,7 +3,7 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfplan
-terraform/terraform.tfvars
+#terraform/terraform.tfvars
 terraform/modules/patch-workflow/lambda/*.zip
 
 # IDE
