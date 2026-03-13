@@ -3,24 +3,27 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Patch workflow schedule (monthly, 2 AM UTC on 2nd Tuesday after Patch Tuesday)
+# Patch workflow schedule (EventBridge Scheduler with EDT timezone)
+# Uses America/New_York for EDT/EST - 10:05 PM Eastern on March 12, 2026
 # -----------------------------------------------------------------------------
 
-resource "aws_cloudwatch_event_rule" "patch_schedule" {
-  name                = "${var.project_name}-patch-schedule"
-  description         = "Triggers CVE patch workflow monthly"
-  schedule_expression = "cron(25 22 12 3 ? 2026)"
-#  schedule_expression = "cron(0 2 ? * 3#2 *)"
+resource "aws_scheduler_schedule" "patch_workflow" {
+  name       = "${var.project_name}-patch-schedule"
+  group_name = "default"
 
-# cron(45 16 13 3 ? 2026)
-  tags = var.tags
-}
+  schedule_expression          = "cron(5 22 12 3 ? 2026)"
+  schedule_expression_timezone = "America/New_York"
 
-resource "aws_cloudwatch_event_target" "patch_workflow" {
-  rule      = aws_cloudwatch_event_rule.patch_schedule.name
-  target_id = "PatchWorkflow"
-  arn       = aws_sfn_state_machine.patch_workflow.arn
-  role_arn  = aws_iam_role.eventbridge.arn
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_sfn_state_machine.patch_workflow.arn
+    role_arn = aws_iam_role.scheduler.arn
+
+    input = "{}"
+  }
 }
 
 # -----------------------------------------------------------------------------

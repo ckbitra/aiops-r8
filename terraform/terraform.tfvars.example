@@ -21,3 +21,6 @@ bedrock_model = "us.amazon.nova-2-lite-v1:0"
 
 # SNS patch alerts - email for circuit-breaker and SSM exclusion notifications
 alert_email = "chandrakumar.bitra@centennial-tech.com"
+
+# For testing: disable maintenance window so patching can run at any time (default: true = 2-6 AM UTC only)
+# check_maintenance_window = false

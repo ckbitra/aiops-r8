@@ -102,6 +102,19 @@
         }
       },
       "ResultPath": "$.batches",
+      "Next": "NotifyPatchingStarted"
+    },
+    "NotifyPatchingStarted": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${patch_notifier_function}",
+        "Payload": {
+          "action": "started",
+          "batches.$": "$.batches.Payload.body"
+        }
+      },
+      "ResultPath": "$.notifyStarted",
       "Next": "ApplyPatches"
     },
     "NotifyNoPatch": {
@@ -349,6 +362,24 @@
         }
       ],
       "ResultPath": "$.postPatchResult",
+      "Next": "NotifyPatchingCompleted"
+    },
+    "NotifyPatchingCompleted": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${patch_notifier_function}",
+        "Payload": {
+          "action": "completed",
+          "discoveredInstances.$": "$.discoveredInstances",
+          "ssmHealthCheck.$": "$.ssmHealthCheck",
+          "analyzeResult.$": "$.analyzeResult",
+          "batches.$": "$.batches",
+          "applyResult.$": "$.applyResult",
+          "postPatchResult.$": "$.postPatchResult"
+        }
+      },
+      "ResultPath": "$.notifyCompleted",
       "End": true
     }
   }

@@ -16,6 +16,7 @@ resource "aws_sfn_state_machine" "patch_workflow" {
     cve_analyzer_function         = aws_lambda_function.cve_analyzer.function_name
     maintenance_window_function   = aws_lambda_function.maintenance_window.function_name
     batch_prepare_function        = aws_lambda_function.batch_prepare.function_name
+    patch_notifier_function       = aws_lambda_function.patch_notifier.function_name
     ssm_runner_function          = aws_lambda_function.ssm_runner.function_name
     failure_check_function       = aws_lambda_function.failure_check.function_name
     vpc_id                       = var.vpc_id

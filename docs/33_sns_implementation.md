@@ -16,14 +16,14 @@ Amazon SNS is a fully managed pub/sub messaging service. Publishers send message
 |-----------|-------------|
 | **Topic** | `aiops-r8-{env}-patch-alerts` (e.g., `aiops-r8-prod-patch-alerts`) |
 | **Subscription** | Optional email subscription when `alert_email` is set |
-| **Publishers** | SSM Agent Health Lambda, SSM Runner Lambda, SFN Failure Notifier Lambda |
-| **Purpose** | Alert operators when instances are excluded, CVE patching is blocked, or workflow fails |
+| **Publishers** | SSM Agent Health Lambda, SSM Runner Lambda, SFN Failure Notifier Lambda, Patch Notifier Lambda |
+| **Purpose** | Alert operators when patching starts/completes, instances excluded, CVE blocked, or workflow fails |
 
 ---
 
 ## Execution Order – When SNS Alerts Are Sent
 
-SNS alerts are sent at three points:
+SNS alerts are sent at five points:
 
 **During workflow execution:**
 
@@ -43,13 +43,26 @@ PrepareBatches
        │
        ▼
 ┌──────────────────────┐
+│ NotifyPatchingStarted │  ◄── SNS ALERT #2: Patching started (instance count, CVEs)
+└──────────────────────┘
+       │
+       ▼
+┌──────────────────────┐
 │ ApplyPatches          │
 │   MapRHELBatches     │
 │   MapWindowsBatches  │
 │       │              │
 │       ▼              │
-│   SSM Runner Lambda  │  ◄── SNS ALERT #2: CVE patching blocked (circuit-breaker)
+│   SSM Runner Lambda  │  ◄── SNS ALERT #3: CVE patching blocked (circuit-breaker)
 └──────────────────────┘
+       │
+       ▼
+PostPatch
+       │
+       ▼
+┌────────────────────────────┐
+│ NotifyPatchingCompleted     │  ◄── SNS ALERT #4: Patching completed + final report
+└────────────────────────────┘
 ```
 
 **After workflow ends (EventBridge):**
@@ -61,7 +74,7 @@ Step Functions execution → FAILED / ABORTED / TIMED_OUT
 EventBridge rule (aiops-r8-{env}-sfn-failure-rule)
        │
        ▼
-SFN Failure Notifier Lambda  ◄── SNS ALERT #3: Patch workflow execution failed
+SFN Failure Notifier Lambda  ◄── SNS ALERT #5: Patch workflow execution failed
 ```
 
 ---
@@ -106,7 +119,28 @@ if excluded_rhel or excluded_windows:
 
 ---
 
-## 2. SNS Alert #2 – Circuit-Breaker (During ApplyPatches)
+## 2. SNS Alert #2 – Patching Started (After PrepareBatches)
+
+### Execution Position
+
+Runs immediately after `PrepareBatches`, before `ApplyPatches`.
+
+### When It Fires
+
+Always, when the workflow proceeds to patching (critical CVEs found, within maintenance window).
+
+### Implementation
+
+| Item | Details |
+|------|---------|
+| **Lambda** | `aiops-r8-patch-notifier` |
+| **Step Functions state** | `NotifyPatchingStarted` |
+| **Subject** | `AIOps: Patch workflow STARTED` |
+| **Message** | Instance counts (RHEL/Windows), batch count, critical CVE IDs |
+
+---
+
+## 3. SNS Alert #3 – Circuit-Breaker (During ApplyPatches)
 
 ### Execution Position
 
@@ -149,7 +183,28 @@ def _send_blocked_alert(blocked_cves: List[str]) -> None:
 
 ---
 
-## 3. SNS Alert #3 – Step Functions Execution Failure (EventBridge)
+## 4. SNS Alert #4 – Patching Completed (After PostPatch)
+
+### Execution Position
+
+Runs after `PostPatch`, when the workflow completes successfully.
+
+### When It Fires
+
+Always, when patching and post-patch verification complete without failure.
+
+### Implementation
+
+| Item | Details |
+|------|---------|
+| **Lambda** | `aiops-r8-patch-notifier` |
+| **Step Functions state** | `NotifyPatchingCompleted` |
+| **Subject** | `AIOps: Patch workflow COMPLETED - Final Report` |
+| **Message** | Final report: instances patched, CVEs addressed, instance IDs |
+
+---
+
+## 5. SNS Alert #5 – Step Functions Execution Failure (EventBridge)
 
 ### Execution Position
 
@@ -234,6 +289,7 @@ All three Lambdas that publish to SNS have `sns:Publish` on the patch-alerts top
 |--------|------------|
 | `aiops-r8-ssm-agent-health` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
 | `aiops-r8-ssm-runner` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
+| `aiops-r8-patch-notifier` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
 | `aiops-r8-sfn-failure-notifier` | `sns:Publish` on `aws_sns_topic.patch_alerts.arn` |
 
 ---
@@ -249,7 +305,9 @@ When `alert_email` is set and Terraform creates the subscription, AWS sends a **
 | Order | Step | Lambda | SNS Alert When |
 |-------|------|--------|----------------|
 | 1 | CheckSSMAgentHealth | `ssm-agent-health` | Instances excluded (not SSM-managed) |
-| 2 | ApplyPatches → PatchRHELBatch / PatchWindowsBatch | `ssm-runner` | CVE(s) blocked by circuit-breaker |
-| 3 | Step Functions execution ends (FAILED/ABORTED/TIMED_OUT) | `sfn-failure-notifier` | Workflow execution failed |
+| 2 | NotifyPatchingStarted | `patch-notifier` | Patching started (instance count, CVEs) |
+| 3 | ApplyPatches → PatchRHELBatch / PatchWindowsBatch | `ssm-runner` | CVE(s) blocked by circuit-breaker |
+| 4 | NotifyPatchingCompleted | `patch-notifier` | Patching completed + final report |
+| 5 | Step Functions execution ends (FAILED/ABORTED/TIMED_OUT) | `sfn-failure-notifier` | Workflow execution failed |
 
 All three alerts use the same SNS topic (`aiops-r8-{env}-patch-alerts`) and, when configured, the same email subscription.

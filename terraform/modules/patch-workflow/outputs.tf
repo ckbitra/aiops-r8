@@ -13,8 +13,8 @@ output "state_machine_name" {
 }
 
 output "schedule_rule_arn" {
-  description = "ARN of the EventBridge schedule rule"
-  value       = aws_cloudwatch_event_rule.patch_schedule.arn
+  description = "ARN of the EventBridge Scheduler schedule (patch workflow, EDT timezone)"
+  value       = aws_scheduler_schedule.patch_workflow.arn
 }
 
 output "cve_analyzer_lambda_arn" {

@@ -47,6 +47,7 @@ resource "aws_iam_role_policy" "step_functions" {
           aws_lambda_function.get_batch.arn,
           aws_lambda_function.failure_check.arn,
           aws_lambda_function.maintenance_window.arn,
+          aws_lambda_function.patch_notifier.arn,
         ]
       },
       {
@@ -62,21 +63,16 @@ resource "aws_iam_role_policy" "step_functions" {
         ]
         Resource = "*"
       },
-      {
-        Effect   = "Allow"
-        Action   = "events:PutTargets"
-        Resource = aws_cloudwatch_event_rule.patch_schedule.arn
-      }
     ]
   })
 }
 
 # -----------------------------------------------------------------------------
-# EventBridge role (to start Step Functions)
+# EventBridge Scheduler role (to start Step Functions on schedule, EDT timezone)
 # -----------------------------------------------------------------------------
 
-resource "aws_iam_role" "eventbridge" {
-  name = "${var.project_name}-patch-eventbridge-role"
+resource "aws_iam_role" "scheduler" {
+  name = "${var.project_name}-patch-scheduler-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -85,7 +81,7 @@ resource "aws_iam_role" "eventbridge" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "events.amazonaws.com"
+          Service = "scheduler.amazonaws.com"
         }
       }
     ]
@@ -94,9 +90,9 @@ resource "aws_iam_role" "eventbridge" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy" "eventbridge" {
-  name = "${var.project_name}-patch-eventbridge-policy"
-  role = aws_iam_role.eventbridge.id
+resource "aws_iam_role_policy" "scheduler" {
+  name = "${var.project_name}-patch-scheduler-policy"
+  role = aws_iam_role.scheduler.id
 
   policy = jsonencode({
     Version = "2012-10-17"

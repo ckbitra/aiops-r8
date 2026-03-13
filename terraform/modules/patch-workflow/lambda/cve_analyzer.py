@@ -22,6 +22,10 @@ def _log(level: str, msg: str, **kwargs: Any) -> None:
     print(json.dumps(record, default=str))
 
 
+# Severities that trigger patching: CRITICAL, HIGH, MEDIUM (IMPORTANT = RHEL Important)
+PATCH_SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "IMPORTANT")
+
+
 def _extract_critical_cve_ids(inspector_result: dict) -> list:
     """Extract CVE IDs from CRITICAL and HIGH severity findings for circuit-breaker."""
     if not inspector_result:
@@ -32,7 +36,7 @@ def _extract_critical_cve_ids(inspector_result: dict) -> list:
     cve_ids = []
     for f in findings:
         severity = (f.get("severity") or "").upper()
-        if severity in ("CRITICAL", "HIGH"):
+        if severity in PATCH_SEVERITIES:
             ids = f.get("cveIds", [])
             if isinstance(ids, str):
                 ids = [ids] if ids else []
@@ -113,11 +117,13 @@ def lambda_handler(event: dict, context: Any) -> dict:
         rhel8_ids = event.get("rhel8_ids", [])
         windows_ids = event.get("windows_ids", [])
 
-        # Fallback: rule-based from Inspector (CRITICAL/HIGH)
+        # Rule-based: patch when CRITICAL, HIGH, MEDIUM, or IMPORTANT severity findings exist
         critical_cve_ids = _extract_critical_cve_ids(inspector_findings)
         rule_based_has_critical = len(critical_cve_ids) > 0
+        _log("INFO", "CVE analysis", findings_count=(inspector_findings or {}).get("findingsCount", 0), rule_based_has_critical=rule_based_has_critical, cve_ids_count=len(critical_cve_ids))
 
         context_str = extract_inspector_context(inspector_findings)
+        sev_list = ", ".join(PATCH_SEVERITIES)
         prompt = f"""You are a security operations expert. Analyze the following Amazon Inspector CVE findings for EC2 instances.
 
 Amazon Inspector CVE Findings (EC2 instances in VPC):
@@ -130,7 +136,7 @@ Provide a JSON response with exactly this structure (no other text):
 {{"has_critical_cves": true or false, "summary": "brief summary", "recommendations": "detailed recommendations"}}
 
 Rules:
-- has_critical_cves: true if there are CRITICAL or HIGH severity findings, false if no findings or only LOW/MEDIUM
+- has_critical_cves: true if there are {sev_list} severity findings (patch these), false if no findings or only LOW
 - summary: 1-2 sentences
 - recommendations: patch prioritization, maintenance window, pre/post checklist (under 300 words)
 """
@@ -141,6 +147,10 @@ Rules:
             if parse_error:
                 _log("WARN", "Bedrock parse fallback to rule-based", parse_error=parse_error)
                 has_critical_cves = rule_based_has_critical
+            elif rule_based_has_critical and not has_critical_cves:
+                # Inspector has CRITICAL/HIGH/MEDIUM findings but Bedrock said false - prefer rule-based
+                _log("INFO", "Rule-based override: Inspector has patchable findings, Bedrock said false", findings_count=len(critical_cve_ids))
+                has_critical_cves = True
         except Exception as e:
             _log("ERROR", "Bedrock failed, using rule-based fallback", error=str(e))
             has_critical_cves = rule_based_has_critical

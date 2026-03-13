@@ -498,6 +498,14 @@ resource "aws_lambda_permission" "maintenance_window_sf" {
   source_arn    = aws_sfn_state_machine.patch_workflow.arn
 }
 
+resource "aws_lambda_permission" "patch_notifier_sf" {
+  statement_id  = "AllowExecutionFromStepFunctions"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.patch_notifier.function_name
+  principal     = "states.amazonaws.com"
+  source_arn    = aws_sfn_state_machine.patch_workflow.arn
+}
+
 # -----------------------------------------------------------------------------
 # EC2 stopped handler (circuit-breaker: record CVE failure, optional recovery)
 # -----------------------------------------------------------------------------
@@ -631,6 +639,69 @@ resource "aws_lambda_function" "ami_cleanup" {
   }
 
   tags = merge(var.tags, { Name = "${var.project_name}-ami-cleanup" })
+}
+
+# -----------------------------------------------------------------------------
+# Patch Notifier (SNS email when patching starts and completes)
+# -----------------------------------------------------------------------------
+
+data "archive_file" "patch_notifier_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/patch_notifier.py"
+  output_path = "${path.module}/lambda/patch_notifier.zip"
+}
+
+resource "aws_iam_role" "patch_notifier_lambda" {
+  name = "${var.project_name}-patch-notifier-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "patch_notifier_lambda" {
+  name = "${var.project_name}-patch-notifier-policy"
+  role = aws_iam_role.patch_notifier_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = aws_sns_topic.patch_alerts.arn
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "patch_notifier" {
+  filename         = data.archive_file.patch_notifier_zip.output_path
+  function_name    = "${var.project_name}-patch-notifier"
+  role             = aws_iam_role.patch_notifier_lambda.arn
+  handler          = "patch_notifier.lambda_handler"
+  source_code_hash = data.archive_file.patch_notifier_zip.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 30
+
+  environment {
+    variables = {
+      PATCH_ALERTS_TOPIC_ARN = aws_sns_topic.patch_alerts.arn
+    }
+  }
+
+  tags = merge(var.tags, { Name = "${var.project_name}-patch-notifier" })
 }
 
 # -----------------------------------------------------------------------------
