@@ -15,4 +15,4 @@ bedrock_model = "us.amazon.nova-2-lite-v1:0"
 
 # SNS patch alerts - email for circuit-breaker, patching started/completed notifications
 # After terraform apply, confirm the subscription via the email AWS sends
-alert_email = "chandrakumar.bitra@centennial-tech.com"
+alert_email = "cbitra@gmail.com"
